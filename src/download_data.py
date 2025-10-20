@@ -62,7 +62,11 @@ class NYCTaxiDataDownloader:
                 self.get_file_path(month).unlink()  # Remove incomplete file
 
     def download_all_available(self) -> list:
-        current_month = datetime.now().month
+        now = datetime.now()
+        if self.YEAR != now.year:
+            current_month = 12
+        else:
+            current_month = now.month
         downloaded_files = [
             self.get_file_path(month)
             for month in range(1, current_month + 1)
@@ -73,6 +77,6 @@ class NYCTaxiDataDownloader:
 
 
 if __name__ == "__main__":
-    downloader = NYCTaxiDataDownloader(year=2025)
+    downloader = NYCTaxiDataDownloader(year=2_024)
     files = downloader.download_all_available()
     print(f"\n📊 Summary: {len(files)} files processed")
