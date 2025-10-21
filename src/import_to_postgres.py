@@ -1,6 +1,7 @@
 """PostgreSQL importer for NYC taxi trip data using SQLModel and pandas."""
 
 from datetime import datetime
+import io
 from pathlib import Path
 import re
 
@@ -22,7 +23,7 @@ class YellowTaxiTrip(SQLModel, table=True):
     tpep_dropoff_datetime: datetime | None = Field(default=None)
     passenger_count: float | None = Field(default=None)
     trip_distance: float | None = Field(default=None)
-    rate_code_id: float | None = Field(default=None)
+    ratecode_id: float | None = Field(default=None)
     store_and_fwd_flag: str | None = Field(default=None)
     pu_location_id: int | None = Field(default=None)
     do_location_id: int | None = Field(default=None)
@@ -114,14 +115,27 @@ class PostgresImporter:
             # 4. Count rows to import
             rows_imported = len(df)
 
-            # 5. Import data using pandas.to_sql (bulk insert)
-            df.to_sql(
-                name="yellow_taxi_trips",  # PostgreSQL table name
-                con=engine,  # Engine SQLModel/SQLAlchemy
-                if_exists="append",  # Append to existing table
-                index=False,  # Do not write DataFrame index as a database column
-                method="multi",  # Batch insert (multi-row) for performance
-            )
+            # 5. Import data using PostgreSQL COPY (fastest method)
+            print(f"💾 Starting bulk import for {rows_imported:,} rows using COPY...")
+
+            # Create an in-memory buffer
+            buffer = io.StringIO()
+            df.to_csv(buffer, index=False, header=False)
+            buffer.seek(0)
+
+            # Use COPY FROM for ultra-fast insertion
+            connection = engine.raw_connection()
+
+            try:
+                cursor = connection.cursor()
+                cursor.copy_expert(
+                    f"COPY yellow_taxi_trips ({','.join(df.columns)}) FROM STDIN WITH CSV",
+                    buffer,
+                )
+                connection.commit()
+            finally:
+                connection.close()
+            print("✓ Bulk import completed")
 
             # 6. Log the import in database
             with Session(engine) as session:

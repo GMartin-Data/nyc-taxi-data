@@ -21,10 +21,7 @@ DATABASE_URL = (
 )
 
 # Create engine
-engine = create_engine(
-    DATABASE_URL,
-    echo=(APP_ENV == "development"),  # Log SQL only in development
-)
+engine = create_engine(DATABASE_URL, echo=False)
 
 
 # ===== UTILITY FUNCTIONS =====
