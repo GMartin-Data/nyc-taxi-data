@@ -40,6 +40,6 @@ jobs:
                   context: .
                   file: ./Dockerfile
                   push: ${{ github.event_name != 'pull_request' }}
-                  tags: ghcr.io/${{ github.repository_owner }}/nyc-taxi-app:latest
+                  tags: ghcr.io/${{ github.repository }}/nyc-taxi-app:latest
                   cache-from: type=gha # Use GitHub Actions cache to restore layers
                   cache-to: type=gha,mode=max # Save all layers to cache (max mode)
