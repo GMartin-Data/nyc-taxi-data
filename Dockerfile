@@ -20,7 +20,9 @@ RUN uv sync --frozen
 
 # Copy source code
 COPY src/ ./src/
-COPY data/ ./data/
+
+# Create data directory (will be mounted or used for storage)
+RUN mkdir -p data
 
 # Expose port
 EXPOSE 8000
