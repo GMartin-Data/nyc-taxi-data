@@ -1,9 +1,11 @@
 """PostgreSQL importer for NYC taxi trip data using SQLModel and pandas."""
 
 from datetime import datetime
+import io
 from pathlib import Path
 import re
 
+import pyarrow.parquet as pq
 import pandas as pd
 from sqlmodel import Field, Session, SQLModel, select
 
@@ -22,7 +24,7 @@ class YellowTaxiTrip(SQLModel, table=True):
     tpep_dropoff_datetime: datetime | None = Field(default=None)
     passenger_count: float | None = Field(default=None)
     trip_distance: float | None = Field(default=None)
-    rate_code_id: float | None = Field(default=None)
+    ratecode_id: float | None = Field(default=None)
     store_and_fwd_flag: str | None = Field(default=None)
     pu_location_id: int | None = Field(default=None)
     do_location_id: int | None = Field(default=None)
@@ -105,31 +107,50 @@ class PostgresImporter:
             return True
 
         try:
-            # 2. Read Parquet file into DataFrame
-            df = pd.read_parquet(file_path)
+            # 2. Read Parquet file with chunking
+            parquet_file = pq.ParquetFile(file_path)
+            total_rows = 0
+            chunk_size = 500_000
 
-            # 3. Rename columns to snake_case
-            df = df.rename(columns=to_snake_case)
+            print(f"📦 Processing {filename} in chunks of {chunk_size:,} rows...")
 
-            # 4. Count rows to import
-            rows_imported = len(df)
+            # Get raw connection once for all chunks
+            connection = engine.raw_connection()
 
-            # 5. Import data using pandas.to_sql (bulk insert)
-            df.to_sql(
-                name="yellow_taxi_trips",  # PostgreSQL table name
-                con=engine,  # Engine SQLModel/SQLAlchemy
-                if_exists="append",  # Append to existing table
-                index=False,  # Do not write DataFrame index as a database column
-                method="multi",  # Batch insert (multi-row) for performance
-            )
+            try:
+                for batch in parquet_file.iter_batches(batch_size=chunk_size):
+                    df = batch.to_pandas()
 
-            # 6. Log the import in database
+                    # Rename columns to snake_case
+                    df = df.rename(columns=to_snake_case)
+
+                    # Create CSV buffer in memory
+                    buffer = io.StringIO()
+                    df.to_csv(buffer, index=False, header=False)
+                    buffer.seek(0)
+
+                    # Import chunk using COPY
+                    cursor = connection.cursor()
+                    cursor.copy_expert(
+                        f"COPY yellow_taxi_trips ({', '.join(df.columns)}) FROM STDIN WITH CSV",
+                        buffer,
+                    )
+
+                    total_rows += len(df)
+                    print(f"  ✓ Imported {total_rows:,} rows...")
+
+                connection.commit()
+                print(f"✅ Completed import: {total_rows:,} rows total")
+
+            finally:
+                connection.close()
+
+            # 3. Log the import in database
             with Session(engine) as session:
-                log_entry = ImportLog(file_name=filename, rows_imported=rows_imported)
+                log_entry = ImportLog(file_name=filename, rows_imported=total_rows)
                 session.add(log_entry)
                 session.commit()
 
-            print(f"✅ Imported {filename}: {rows_imported:,} rows.")
             return True
 
         except Exception as e:
