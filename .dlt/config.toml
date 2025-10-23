@@ -1,0 +1,8 @@
+[runtime]
+log_level = "INFO"
+
+[sources.nyc_taxi]
+year = 2025
+pipeline_name = "nyc_taxi_pipeline"
+dataset_name = "nyc_taxi_dlt"
+destination = "postgres"
